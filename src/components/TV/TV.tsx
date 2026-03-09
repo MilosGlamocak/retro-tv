@@ -18,7 +18,7 @@ export default function TV() {
   return (
     <Center top position={[0, -1.5, 0]}>
       <primitive object={scene} />
-      <CRTScreen geometry={nodes.Screen.geometry} videoSrc="/mockup-video.mp4" />
+      <CRTScreen geometry={nodes.Screen.geometry} videoSrc="/serbia-strong-original.mp4" />
     </Center>
   )
 }
