@@ -1,8 +1,12 @@
 import { OrbitControls } from '@react-three/drei'
+import { useDragStore } from '../store/dragStore'
 
 export function CameraControls() {
+  const isDragging = useDragStore(s => s.isDragging)
+
   return (
     <OrbitControls
+      enabled={!isDragging}
       enableDamping
       dampingFactor={0.05}
       minDistance={2}
