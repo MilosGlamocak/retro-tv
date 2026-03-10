@@ -30,7 +30,8 @@ const CHANNEL_VIDEOS: Record<number, string> = {
 }
 
 const HIDDEN_MESH_NAMES = [
-  'Mesh_9', 'Mesh_10',
+  'Mesh_9', 'Mesh_10',   // Button_Upper  — volume knob
+  'Mesh_7', 'Mesh_8',    // Button_Middle — brightness knob
   'Plane003', 'Plane003_1',
   'Plane005_1', 'Plane005_2',
   'Plane006', 'Plane006_1',
@@ -42,13 +43,48 @@ const HIDDEN_MESH_NAMES = [
   'Plane016_1', 'Plane016_2',
 ]
 
+// Dijeli logiku drag knoba — isti pattern za volume i brightness
+function useKnobDrag(
+  initialValue: number,
+  onValue: (v: number) => void,
+  setDragging: (v: boolean) => void
+) {
+  const isDragging = useRef(false)
+  const startY = useRef(0)
+  const startValue = useRef(initialValue)
+
+  const onPointerDown = useCallback((e: any) => {
+    e.stopPropagation()
+    isDragging.current = true
+    setDragging(true)
+    startY.current = e.clientY
+    startValue.current = initialValue
+
+    const onMove = (ev: PointerEvent) => {
+      if (!isDragging.current) return
+      const delta = (startY.current - ev.clientY) / 150
+      onValue(Math.min(1, Math.max(0, startValue.current + delta)))
+    }
+    const onUp = () => {
+      isDragging.current = false
+      setDragging(false)
+      document.removeEventListener('pointermove', onMove)
+      document.removeEventListener('pointerup', onUp)
+      document.body.style.cursor = 'auto'
+    }
+    document.addEventListener('pointermove', onMove)
+    document.addEventListener('pointerup', onUp)
+    document.body.style.cursor = 'ns-resize'
+  }, [initialValue, onValue, setDragging])
+
+  return { isDragging, onPointerDown }
+}
+
 export default function TV() {
   const { scene, nodes, materials } = useGLTF('./TV.glb') as any
   const [volume, setVolume] = useState(0)
-  const [activeChannel, setActiveChannel] = useState(1)
-  const isDragging = useRef(false)
-  const startY = useRef(0)
-  const startVolume = useRef(0)
+  const [brightness, setBrightness] = useState(0.7)
+  const [activeChannel, setActiveChannel] = useState(10)
   const setDragging = useDragStore(s => s.setDragging)
 
   useEffect(() => {
@@ -61,48 +97,33 @@ export default function TV() {
     })
   }, [scene])
 
-  const knobRotationZ = -0.6 + volume * 1.2
+  const volumeKnob = useKnobDrag(volume, setVolume, setDragging)
+  const brightnessKnob = useKnobDrag(brightness, setBrightness, setDragging)
 
-  const handlePointerDown = useCallback((e: any) => {
-    e.stopPropagation()
-    isDragging.current = true
-    setDragging(true)
-    startY.current = e.clientY
-    startVolume.current = volume
-
-    const onMove = (ev: PointerEvent) => {
-      if (!isDragging.current) return
-      const delta = (startY.current - ev.clientY) / 150
-      setVolume(Math.min(1, Math.max(0, startVolume.current + delta)))
-    }
-    const onUp = () => {
-      isDragging.current = false
-      setDragging(false)
-      document.removeEventListener('pointermove', onMove)
-      document.removeEventListener('pointerup', onUp)
-      document.body.style.cursor = 'auto'
-    }
-    document.addEventListener('pointermove', onMove)
-    document.addEventListener('pointerup', onUp)
-    document.body.style.cursor = 'ns-resize'
-  }, [volume, setDragging])
-
-  const { geo9, geo10, knobPosition } = useMemo(() => {
-    if (!nodes?.Mesh_9?.geometry || !nodes?.Mesh_10?.geometry)
-      return { geo9: null, geo10: null, knobPosition: [0, 0, 0] as [number, number, number] }
-
-    const geo9 = nodes.Mesh_9.geometry.clone()
-    const geo10 = nodes.Mesh_10.geometry.clone()
-    const box = new THREE.Box3().setFromBufferAttribute(geo9.attributes.position as THREE.BufferAttribute)
+  // Kloniraj i centriraj geometriju knoba oko vlastite ose
+  function prepareKnob(geoNode: any, markerNode: any, groupNode: any) {
+    if (!geoNode?.geometry || !markerNode?.geometry || !groupNode) return null
+    const geo1 = geoNode.geometry.clone()
+    const geo2 = markerNode.geometry.clone()
+    const box = new THREE.Box3().setFromBufferAttribute(geo1.attributes.position as THREE.BufferAttribute)
     const center = new THREE.Vector3()
     box.getCenter(center)
-    geo9.center()
-    geo10.translate(-center.x, -center.y, -center.z)
+    geo1.center()
+    geo2.translate(-center.x, -center.y, -center.z)
+    const p = groupNode.position
+    const position: [number, number, number] = [p.x + center.x, p.y + center.y, p.z + center.z]
+    return { geo1, geo2, position }
+  }
 
-    const p = nodes.Button_Upper.position
-    const knobPosition: [number, number, number] = [p.x + center.x, p.y + center.y, p.z + center.z]
-    return { geo9, geo10, knobPosition }
-  }, [nodes?.Mesh_9?.geometry, nodes?.Mesh_10?.geometry])
+  const volumeKnobData = useMemo(() =>
+    prepareKnob(nodes?.Mesh_9, nodes?.Mesh_10, nodes?.Button_Upper),
+    [nodes?.Mesh_9?.geometry, nodes?.Mesh_10?.geometry]
+  )
+
+  const brightnessKnobData = useMemo(() =>
+    prepareKnob(nodes?.Mesh_7, nodes?.Mesh_8, nodes?.Button_Middle),
+    [nodes?.Mesh_7?.geometry, nodes?.Mesh_8?.geometry]
+  )
 
   const channelButtonData = useMemo(() => {
     return CHANNEL_BUTTONS.map(btn => {
@@ -119,20 +140,49 @@ export default function TV() {
     }).filter(Boolean)
   }, [nodes])
 
+  function KnobMesh({ data, value, mat1, mat2, knob }: {
+    data: { geo1: THREE.BufferGeometry, geo2: THREE.BufferGeometry, position: [number, number, number] }
+    value: number
+    mat1: THREE.Material
+    mat2: THREE.Material
+    knob: ReturnType<typeof useKnobDrag>
+  }) {
+    const rotZ = -0.6 + value * 1.2
+    return (
+      <group
+        position={data.position}
+        onPointerDown={knob.onPointerDown}
+        onPointerOver={() => { if (!knob.isDragging.current) document.body.style.cursor = 'ns-resize' }}
+        onPointerOut={() => { if (!knob.isDragging.current) document.body.style.cursor = 'auto' }}
+      >
+        <mesh geometry={data.geo1} material={mat1} rotation={[0, 0, rotZ]} castShadow receiveShadow />
+        <mesh geometry={data.geo2} material={mat2} rotation={[0, 0, rotZ]} castShadow receiveShadow />
+      </group>
+    )
+  }
+
   return (
     <Center top position={[0, -1.5, 0]}>
       <primitive object={scene} />
 
-      {geo9 && geo10 && (
-        <group
-          position={knobPosition}
-          onPointerDown={handlePointerDown}
-          onPointerOver={() => { if (!isDragging.current) document.body.style.cursor = 'ns-resize' }}
-          onPointerOut={() => { if (!isDragging.current) document.body.style.cursor = 'auto' }}
-        >
-          <mesh geometry={geo9} material={materials.Black} rotation={[0, 0, knobRotationZ]} castShadow receiveShadow />
-          <mesh geometry={geo10} material={materials.White} rotation={[0, 0, knobRotationZ]} castShadow receiveShadow />
-        </group>
+      {volumeKnobData && (
+        <KnobMesh
+          data={volumeKnobData}
+          value={volume}
+          mat1={materials.Black}
+          mat2={materials.White}
+          knob={volumeKnob}
+        />
+      )}
+
+      {brightnessKnobData && (
+        <KnobMesh
+          data={brightnessKnobData}
+          value={brightness}
+          mat1={materials.Black}
+          mat2={materials.White}
+          knob={brightnessKnob}
+        />
       )}
 
       {channelButtonData.map((btn: any) => (
@@ -154,6 +204,7 @@ export default function TV() {
           geometry={nodes.Screen.geometry}
           videoSrc={CHANNEL_VIDEOS[activeChannel]}
           volume={volume}
+          brightness={brightness}
         />
       )}
     </Center>
