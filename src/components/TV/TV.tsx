@@ -5,7 +5,7 @@ import { useDragStore } from "../../store/dragStore"
 import * as THREE from 'three'
 
 export default function TV() {
-  const { scene, nodes, materials } = useGLTF('/TV-texture.glb') as any
+  const { scene, nodes, materials } = useGLTF('./TV-texture.glb') as any
   const [volume, setVolume] = useState(0)
   const isDragging = useRef(false)
   const startY = useRef(0)
@@ -93,11 +93,11 @@ export default function TV() {
 
       <CRTScreen
         geometry={nodes.Screen.geometry}
-        videoSrc="/serbia-strong-original.mp4"
+        videoSrc="./serbia-strong-original.mp4"
         volume={volume}
       />
     </Center>
   )
 }
 
-useGLTF.preload('/TV-texture.glb')
+useGLTF.preload('./TV-texture.glb')
