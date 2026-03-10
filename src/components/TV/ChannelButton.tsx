@@ -15,7 +15,7 @@ interface Props {
 
 export default function ChannelButton({
   geo1, geo2, mat1, mat2,
-  position, channel, isActive, onPress
+  position, channel, onPress
 }: Props) {
   const [pressed, setPressed] = useState(false)
   
